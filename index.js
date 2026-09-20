@@ -11,7 +11,6 @@ const client = new Client({
 // 🛑 استبدل الرقم اللي بين علامتي التنصيص برقم الـ User ID الرقمي الخاص بك (اللي نسخته من بروفايلك)
 const MY_USER_ID = '1423724725519126619';
 
-
 // متغيرات لحفظ الـ IDs والصورة
 let targetChannelId = null; // لروم القفل والفتح
 let autoImageChannelId = null; // لروم الصورة التلقائية
@@ -36,7 +35,7 @@ client.on('messageCreate', async (message) => {
 
   const content = message.content.trim();
 
-  // ************ أمر قائمة الأوامر (-ك) ************
+  // ************ 1. أمر قائمة الأوامر (-ك) ************
   if (content === '-ك' || content === '-commands') {
     const embed = new EmbedBuilder()
       .setColor('#5865F2')
@@ -50,6 +49,8 @@ client.on('messageCreate', async (message) => {
         { name: '🔓 `-فتح`', value: 'يفتح الروم المحددة مرة أخرى.' },
         { name: '🖼️ `-تحديد روم صوره #الروم`', value: 'لتحديد روم معين لإرسال الصورة التلقائية فيه.' },
         { name: '📸 `-تحديد صوره`', value: 'لرفع وتحديد الصورة التي ستُرسل تلقائياً (أرفقها مع الأمر).' },
+        { name: '🗑️ `-ريموف صوره`', value: 'لإيقاف وإلغاء تحديد روم الصور التلقائية.' },
+        { name: '📋 `-قائمه صور`', value: 'لعرض الروم المفعل حالياً لإرسال الصور.' },
         { name: '📋 `-ك` أو `-commands`', value: 'يعرض لك هذه القائمة التي توضح كل الأوامر وفوائدها.' }
       )
       .setFooter({ text: 'البوت يعمل حصرياً لصاحب الآي دي المخصص.' });
@@ -57,7 +58,7 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // ************ أمر ping ************
+  // ************ 2. أمر ping ************
   if (content === 'ping' || content === '-ping') {
     const ping = client.ws.ping;
 
@@ -68,13 +69,13 @@ client.on('messageCreate', async (message) => {
     return message.reply({ embeds: [embed] });
   }
 
-  // ************ 1. أمر اقتراح اسم ************
+  // ************ 3. أمر اقتراح اسم ************
   if (content === 'عطني اقتراح اسم') {
     const randomName = nameSuggestions[Math.floor(Math.random() * nameSuggestions.length)];
     return message.reply(`💡 اقتراح الاسم لك: **${randomName}**`);
   }
 
-  // ************ 2. أمر تحديد روم القفل والفتح ************
+  // ************ 4. أمر تحديد روم القفل والفتح ************
   if (content.startsWith('-تحديد قفل وفتح روم')) {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
@@ -89,7 +90,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`✅ تم تحديد الروم <#${targetChannelId}> للتحكم بالقفل والفتح!`);
   }
 
-  // ************ 3. أمر قفل الروم المحدد ************
+  // ************ 5. أمر قفل الروم المحدد ************
   if (content === '-قفل') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return message.reply('❌ ما عندك صلاحية التحكم بالرومات.');
@@ -107,14 +108,14 @@ client.on('messageCreate', async (message) => {
       await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
         SendMessages: false
       });
-      message.channel.send('🔒 تم قفل هذه الروم بنجاح.');
+      return message.channel.send('🔒 تم قفل هذه الروم بنجاح.');
     } catch (error) {
       console.error(error);
-      message.reply('❌ حدث خطأ أثناء القفل، تأكد من صلاحيات البوت.');
+      return message.reply('❌ حدث خطأ أثناء القفل، تأكد من صلاحيات البوت.');
     }
   }
 
-  // ************ 4. أمر فتح الروم المحدد ************
+  // ************ 6. أمر فتح الروم المحدد ************
   if (content === '-فتح') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return message.reply('❌ ما عندك صلاحية التحكم بالرومات.');
@@ -132,14 +133,14 @@ client.on('messageCreate', async (message) => {
       await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
         SendMessages: true
       });
-      message.channel.send('🔓 تم فتح هذه الروم بنجاح.');
+      return message.channel.send('🔓 تم فتح هذه الروم بنجاح.');
     } catch (error) {
       console.error(error);
-      message.reply('❌ حدث خطأ أثناء الفتح، تأكد من صلاحيات البوت.');
+      return message.reply('❌ حدث خطأ أثناء الفتح، تأكد من صلاحيات البوت.');
     }
   }
 
-  // ************ 5. أمر تحديد روم الصورة تلقائياً ************
+  // ************ 7. أمر تحديد روم الصورة تلقائياً ************
   if (content.startsWith('-تحديد روم صوره')) {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
@@ -154,7 +155,7 @@ client.on('messageCreate', async (message) => {
     return message.reply(`✅ تم تحديد الروم <#${autoImageChannelId}> لإرسال الصورة تلقائياً! لا تنس تحديد الصورة بأمر \`-تحديد صوره\`.`);
   }
 
-  // ************ 6. أمر تحديد الصورة ************
+  // ************ 8. أمر تحديد الصورة ************
   if (content === '-تحديد صوره') {
     if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
       return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
@@ -174,7 +175,25 @@ client.on('messageCreate', async (message) => {
     return message.reply('✅ تم تحديد الصورة بنجاح وسيتم إرسالها تلقائياً بعد كل رسالة في الروم المحدد.');
   }
 
-  // ************ 7. ميزة إرسال الصورة تلقائياً ************
+  // ************ 9. أمر إلغاء روم الصور (-ريموف صوره) ************
+  if (content === '-ريموف صوره') {
+    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
+      return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
+    }
+
+    autoImageChannelId = null;
+    autoImageUrl = null;
+    return message.reply('🗑️ تم إلغاء تفعيل وإزالة روم الصور التلقائية بنجاح.');
+  }
+
+  // ************ 10. أمر عرض قائمة صور (-قائمه صور) ************
+  if (content === '-قائمه صور') {
+    const channelName = autoImageChannelId ? `<#${autoImageChannelId}>` : 'غير محدد';
+    const hasImage = autoImageUrl ? '✅ موجودة' : '❌ غير محددة';
+    return message.reply(`📌 **روم الصور التلقائية الحالي:** ${channelName}\n🖼️ **حالة الصورة:** ${hasImage}`);
+  }
+
+  // ************ 11. ميزة إرسال الصورة تلقائياً ************
   if (autoImageChannelId && autoImageUrl && message.channel.id === autoImageChannelId) {
     try {
       await message.channel.send({ files: [autoImageUrl] });
