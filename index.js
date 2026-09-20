@@ -8,6 +8,9 @@ const client = new Client({
   ]
 });
 
+// 🛑 استبدل الرقم اللي بين علامتي التنصيص برقم الـ User ID الرقمي الخاص بك (اللي نسخته من بروفايلك)
+const MY_USER_ID = 'حط_ايدي_حسابك_هنا';
+
 // متغيرات لحفظ الـ IDs والصورة
 let targetChannelId = null; // لروم القفل والفتح
 let autoImageChannelId = null; // لروم الصورة التلقائية
@@ -27,7 +30,31 @@ client.once('ready', () => {
 client.on('messageCreate', async (message) => {
   if (message.author.bot) return;
 
+  // هذا الشرط يخلي البوت يتجاهل أي شخص يرسل رسالة إلا إذا كنت أنت صاحب الآي دي
+  if (message.author.id !== MY_USER_ID) return;
+
   const content = message.content.trim();
+
+  // ************ أمر قائمة الأوامر (-ك) ************
+  if (content === '-ك' || content === '-commands') {
+    const embed = new EmbedBuilder()
+      .setColor('#5865F2')
+      .setTitle('📜 قائمة أوامر البوت المتاحة لك')
+      .setDescription('هذه هي جميع الأوامر المبرمجة في بوتك الخاص:')
+      .addFields(
+        { name: '🏓 `ping` أو `-ping`', value: 'لعرض سرعة استجابة البوت (Latency).' },
+        { name: '💡 `عطني اقتراح اسم`', value: 'يعطيك اسم عشوائي رهيب مقترح.' },
+        { name: '📌 `-تحديد قفل وفتح روم #الروم`', value: 'لتحديد الروم المخصص لأوامر القفل والفتح.' },
+        { name: '🔒 `-قفل`', value: 'يقفل الروم المحددة تلقائياً بحيث لا يمكن لأحد الكتابة فيها.' },
+        { name: '🔓 `-فتح`', value: 'يفتح الروم المحددة مرة أخرى.' },
+        { name: '🖼️ `-تحديد روم صوره #الروم`', value: 'لتحديد روم معين لإرسال الصورة التلقائية فيه.' },
+        { name: '📸 `-تحديد صوره`', value: 'لرفع وتحديد الصورة التي ستُرسل تلقائياً (أرفقها مع الأمر).' },
+        { name: '📋 `-ك` أو `-commands`', value: 'يعرض لك هذه القائمة التي توضح كل الأوامر وفوائدها.' }
+      )
+      .setFooter({ text: 'البوت يعمل حصرياً لصاحب الآي دي المخصص.' });
+
+    return message.reply({ embeds: [embed] });
+  }
 
   // ************ أمر ping ************
   if (content === 'ping' || content === '-ping') {
@@ -58,7 +85,7 @@ client.on('messageCreate', async (message) => {
     }
 
     targetChannelId = mentionedChannel.id;
-    return message.reply(`✅ تم تحديد الروم <#${targetChannelId}> للتحكم بالقفل والفتح! تقدرين تغيرينها بأي وقت.`);
+    return message.reply(`✅ تم تحديد الروم <#${targetChannelId}> للتحكم بالقفل والفتح!`);
   }
 
   // ************ 3. أمر قفل الروم المحدد ************
@@ -68,7 +95,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (!targetChannelId) {
-      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدمي أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
+      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدم أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
     }
 
     if (message.channel.id !== targetChannelId) {
@@ -82,7 +109,7 @@ client.on('messageCreate', async (message) => {
       message.channel.send('🔒 تم قفل هذه الروم بنجاح.');
     } catch (error) {
       console.error(error);
-      message.reply('❌ حدث خطأ أثناء القفل، تأكدي من صلاحيات البوت.');
+      message.reply('❌ حدث خطأ أثناء القفل، تأكد من صلاحيات البوت.');
     }
   }
 
@@ -93,7 +120,7 @@ client.on('messageCreate', async (message) => {
     }
 
     if (!targetChannelId) {
-      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدمي أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
+      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدم أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
     }
 
     if (message.channel.id !== targetChannelId) {
@@ -107,7 +134,7 @@ client.on('messageCreate', async (message) => {
       message.channel.send('🔓 تم فتح هذه الروم بنجاح.');
     } catch (error) {
       console.error(error);
-      message.reply('❌ حدث خطأ أثناء الفتح، تأكدي من صلاحيات البوت.');
+      message.reply('❌ حدث خطأ أثناء الفتح، تأكد من صلاحيات البوت.');
     }
   }
 
@@ -123,7 +150,7 @@ client.on('messageCreate', async (message) => {
     }
 
     autoImageChannelId = mentionedChannel.id;
-    return message.reply(`✅ تم تحديد الروم <#${autoImageChannelId}> لإرسال الصورة تلقائياً! لا تنسي تحديد الصورة بأمر \`-تحديد صوره\`.`);
+    return message.reply(`✅ تم تحديد الروم <#${autoImageChannelId}> لإرسال الصورة تلقائياً! لا تنس تحديد الصورة بأمر \`-تحديد صوره\`.`);
   }
 
   // ************ 6. أمر تحديد الصورة ************
@@ -134,7 +161,7 @@ client.on('messageCreate', async (message) => {
 
     const attachment = message.attachments.first();
     if (!attachment) {
-      return message.reply('❌ يرجى إرفاق صورة مع هذا الأمر من ألبوم الكاميرا.');
+      return message.reply('❌ يرجى إرفاق صورة مع هذا الأمر.');
     }
 
     const contentType = attachment.contentType;
@@ -148,8 +175,6 @@ client.on('messageCreate', async (message) => {
 
   // ************ 7. ميزة إرسال الصورة تلقائياً ************
   if (autoImageChannelId && autoImageUrl && message.channel.id === autoImageChannelId) {
-    if (message.author.id === client.user.id) return;
-
     try {
       await message.channel.send({ files: [autoImageUrl] });
     } catch (error) {
