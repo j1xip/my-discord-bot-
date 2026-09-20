@@ -9,7 +9,8 @@ const client = new Client({
 });
 
 // 🛑 استبدل الرقم اللي بين علامتي التنصيص برقم الـ User ID الرقمي الخاص بك (اللي نسخته من بروفايلك)
-const MY_USER_ID = 'حط_ايدي_حسابك_هنا';
+const const MY_USER_ID = '1423724725519126619';
+
 
 // متغيرات لحفظ الـ IDs والصورة
 let targetChannelId = null; // لروم القفل والفتح
