@@ -34,8 +34,15 @@ const EMBED_COLOR = '#0B1F3A';
 // التخزين
 // =====================================================
 
+// إعدادات السيرفر
 const serverSettings = new Map();
+
+// النقاط الدائمة
 const serverPoints = new Map();
+
+// نقاط الراوند الحالي
+const roundPoints = new Map();
+
 const activeRounds = new Map();
 const finishDrafts = new Map();
 
@@ -59,7 +66,7 @@ function getSettings(guildId) {
 
 
 // =====================================================
-// نقاط السيرفر
+// النقاط الدائمة
 // =====================================================
 
 function getPoints(guildId) {
@@ -72,13 +79,35 @@ function getPoints(guildId) {
 
 
 // =====================================================
+// نقاط الراوند
+// =====================================================
+
+function getRoundPoints(guildId) {
+  if (!roundPoints.has(guildId)) {
+    roundPoints.set(guildId, new Map());
+  }
+
+  return roundPoints.get(guildId);
+}
+
+
+// =====================================================
+// بدء راوند جديد
+// =====================================================
+
+function startNewRound(guildId) {
+  roundPoints.set(guildId, new Map());
+  activeRounds.set(guildId, true);
+}
+
+
+// =====================================================
 // التحقق من الرول
 // =====================================================
 
 function hasAllowedRole(member, settings) {
   if (!member) return false;
 
-  // الأدمن يقدر يستخدم البوت دائمًا
   if (
     member.permissions &&
     member.permissions.has(PermissionFlagsBits.Administrator)
@@ -86,7 +115,6 @@ function hasAllowedRole(member, settings) {
     return true;
   }
 
-  // إذا ما تحدد رول، يستجيب للجميع
   if (settings.allowedRoleIds.length === 0) {
     return true;
   }
@@ -98,7 +126,7 @@ function hasAllowedRole(member, settings) {
 
 
 // =====================================================
-// ترتيب النقاط
+// ترتيب النقاط الدائمة
 // =====================================================
 
 function getSortedPoints(guildId) {
@@ -110,14 +138,27 @@ function getSortedPoints(guildId) {
 
 
 // =====================================================
-// إنشاء نتائج الراوند
+// ترتيب نقاط الراوند
+// =====================================================
+
+function getSortedRoundPoints(guildId) {
+  const points = getRoundPoints(guildId);
+
+  return Array.from(points.entries())
+    .filter(([userId, points]) => points !== 0)
+    .sort((a, b) => b[1] - a[1]);
+}
+
+
+// =====================================================
+// نتائج الراوند
 // =====================================================
 
 function buildResultsText(guildId) {
-  const sorted = getSortedPoints(guildId);
+  const sorted = getSortedRoundPoints(guildId);
 
   if (sorted.length === 0) {
-    return '🏆 لا توجد نقاط مسجلة حتى الآن.';
+    return '🏆 لا توجد نقاط مسجلة في هذا الراوند.';
   }
 
   let text = '🏆 نتائج الراوند\n\n';
@@ -154,7 +195,11 @@ const slashCommands = [
 
   new SlashCommandBuilder()
     .setName('راوند')
-    .setDescription('بدء راوند النقاط'),
+    .setDescription('بدء راوند جديد وتصـفير نقاط الراوند'),
+
+  new SlashCommandBuilder()
+    .setName('نقاط')
+    .setDescription('عرض النقاط الدائمة'),
 
   new SlashCommandBuilder()
     .setName('finish')
@@ -223,13 +268,14 @@ client.on('interactionCreate', async interaction => {
         .addFields(
 
           {
-            name: '🎮 النقاط',
+            name: '🎮 النقاط والراوند',
             value:
-              '`/راوند` — بدء الراوند\n' +
+              '`/راوند` — بدء راوند جديد وتصـفير نقاط الراوند\n' +
               '`+نقطه` — إضافة نقطة بالرد على رسالة\n' +
               '`-نقطه` — خصم نقطة بالرد على رسالة\n' +
-              '`/finish` — إنهاء الراوند\n' +
-              '`-نقاط` — عرض النقاط'
+              '`/finish` — إنهاء الراوند وعرض نتائجه\n' +
+              '`/نقاط` — عرض النقاط الدائمة\n' +
+              '`-نقاط` — عرض النقاط الدائمة'
           },
 
           {
@@ -356,19 +402,65 @@ client.on('interactionCreate', async interaction => {
         });
       }
 
-      activeRounds.set(guildId, true);
+      // يبدأ راوند جديد ويصفر نقاط الراوند فقط
+      startNewRound(guildId);
 
       const embed = new EmbedBuilder()
         .setColor(EMBED_COLOR)
-        .setTitle('🎮 بدأ الراوند!')
+        .setTitle('🎮 بدأ راوند جديد!')
         .setDescription(
-          '🔥 بدأ احتساب النقاط!\n\n' +
+          '🔥 بدأ احتساب النقاط من الصفر!\n\n' +
           '➕ **إضافة نقطة:**\n' +
           'ردي على رسالة الشخص واكتبي `+نقطه`\n\n' +
           '➖ **خصم نقطة:**\n' +
           'ردي على رسالة الشخص واكتبي `-نقطه`\n\n' +
           '🏁 عند الانتهاء استخدمي `/finish`'
         );
+
+      return interaction.reply({
+        embeds: [embed]
+      });
+    }
+
+
+    // -----------------------------------------------
+    // /نقاط
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'نقاط') {
+
+      const points = getPoints(guildId);
+
+      if (points.size === 0) {
+        return interaction.reply({
+          content: '🏆 لا توجد نقاط مسجلة حتى الآن.'
+        });
+      }
+
+      const sorted = getSortedPoints(guildId).slice(0, 10);
+
+      let description = '';
+
+      sorted.forEach(([userId, value], index) => {
+
+        let rank;
+
+        if (index === 0) rank = '🥇';
+        else if (index === 1) rank = '🥈';
+        else if (index === 2) rank = '🥉';
+        else rank = `#${index + 1}`;
+
+        description +=
+          `${rank} <@${userId}> — **${value} نقطة**\n`;
+      });
+
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle('🏆 النقاط الدائمة')
+        .setDescription(description)
+        .setFooter({
+          text: 'النقاط الدائمة لا تتصفر مع الراوندات'
+        });
 
       return interaction.reply({
         embeds: [embed]
@@ -517,6 +609,7 @@ client.on('interactionCreate', async interaction => {
       const textInput = new TextInputBuilder()
         .setCustomId('finish_text')
         .setLabel('عدلي رسالة النتائج')
+        .setPlaceholder('تقدرين تحطين إيموجيات السيرفر هنا <:emoji:ID>')
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
         .setMaxLength(4000)
@@ -706,7 +799,13 @@ client.on('messageCreate', async message => {
 
   const guildId = message.guild.id;
   const settings = getSettings(guildId);
+
+  // النقاط الدائمة
   const points = getPoints(guildId);
+
+  // نقاط الراوند
+  const currentRoundPoints = getRoundPoints(guildId);
+
   const content = message.content.trim();
 
 
@@ -742,10 +841,10 @@ client.on('messageCreate', async message => {
 
     const embed = new EmbedBuilder()
       .setColor(EMBED_COLOR)
-      .setTitle('🏆 النقاط')
+      .setTitle('🏆 النقاط الدائمة')
       .setDescription(description)
       .setFooter({
-        text: 'توب 10'
+        text: 'النقاط الدائمة لا تتصفر مع الراوندات'
       });
 
     return message.reply({
@@ -797,12 +896,22 @@ client.on('messageCreate', async message => {
       );
     }
 
-    const current =
+    // إضافة للنقاط الدائمة
+    const currentTotal =
       points.get(targetUser.id) || 0;
 
     points.set(
       targetUser.id,
-      current + 1
+      currentTotal + 1
+    );
+
+    // إضافة لنقاط الراوند
+    const currentRound =
+      currentRoundPoints.get(targetUser.id) || 0;
+
+    currentRoundPoints.set(
+      targetUser.id,
+      currentRound + 1
     );
 
     return message.react('✅');
@@ -852,12 +961,22 @@ client.on('messageCreate', async message => {
       );
     }
 
-    const current =
+    // خصم من النقاط الدائمة
+    const currentTotal =
       points.get(targetUser.id) || 0;
 
     points.set(
       targetUser.id,
-      current - 1
+      currentTotal - 1
+    );
+
+    // خصم من نقاط الراوند
+    const currentRound =
+      currentRoundPoints.get(targetUser.id) || 0;
+
+    currentRoundPoints.set(
+      targetUser.id,
+      currentRound - 1
     );
 
     return message.react('✅');
@@ -886,12 +1005,13 @@ client.on('messageCreate', async message => {
       .setColor(EMBED_COLOR)
       .setTitle('📜 أوامر البوت')
       .setDescription(
-        '**النقاط:**\n' +
-        '`/راوند`\n' +
+        '**النقاط والراوند:**\n' +
+        '`/راوند` — راوند جديد وتصـفير نقاط الراوند\n' +
         '`+نقطه` بالرد\n' +
         '`-نقطه` بالرد\n' +
         '`/finish`\n' +
-        '`-نقاط`\n\n' +
+        '`/نقاط` — النقاط الدائمة\n' +
+        '`-نقاط` — النقاط الدائمة\n\n' +
 
         '**الرولات:**\n' +
         '`/رول`\n\n' +
