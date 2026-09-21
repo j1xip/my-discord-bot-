@@ -1,103 +1,50 @@
-const { Client, GatewayIntentBits, PermissionFlagsBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const {
+  Client,
+  GatewayIntentBits,
+  PermissionFlagsBits,
+  EmbedBuilder,
+  REST,
+  Routes,
+  SlashCommandBuilder,
+  ActionRowBuilder,
+  StringSelectMenuBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
+} = require('discord.js');
 
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildMembers // مطلوب للتحقق من رولات الأعضاء
+    GatewayIntentBits.GuildMembers
   ]
 });
 
-// 🛑 الآي دي الخاص بك (حسابك الشخصي)
-const OWNER_ID = '1423724725519126619';
+// =====================================================
+// اللون الكحلي للـ Embeds
+// =====================================================
 
-// تخزين الإعدادات لكل سيرفر (الرولات المسموحة، الرومات المحددة، إلخ)
+const EMBED_COLOR = '#0B1F3A';
+
+// =====================================================
+// التخزين
+// =====================================================
+
 const serverSettings = new Map();
+const serverPoints = new Map();
+const activeRounds = new Map();
+const finishDrafts = new Map();
 
-client.once('ready', () => {
-  console.log(`تم تشغيل البوت بنجاح: ${client.user.tag}`);
-});
 
-// ************ نظام طلب دخول السيرفرات والإشعارات ************
-client.on('guildCreate', async (guild) => {
-  try {
-    const owner = await client.users.fetch(OWNER_ID).catch(() => null);
-    if (!owner) return;
+// =====================================================
+// إعدادات السيرفر
+// =====================================================
 
-    let inviter = 'غير معروف';
-    try {
-      const fetchedLogs = await guild.fetchAuditLogs({
-        limit: 1,
-        type: 28, // Bot Add log type
-      });
-      const botAddLog = fetchedLogs.entries.first();
-      if (botAddLog) {
-        inviter = `<@${botAddLog.executor.id}> (${botAddLog.executor.tag})`;
-      }
-    } catch (e) {
-      inviter = 'غير معروف (تأكد من صلاحيات Audit Log)';
-    }
-
-    const guildIcon = guild.iconURL({ dynamic: true, size: 1024 }) || 'https://i.imgur.com/AfFp7pu.png';
-
-    const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('📥 طلب إضافة بوت جديد')
-      .setDescription(`تمت إضافة البوت إلى سيرفر جديد!`)
-      .setThumbnail(guildIcon)
-      .addFields(
-        { name: '🌐 اسم السيرفر', value: `\`${guild.name}\``, inline: true },
-        { name: '🆔 آي دي السيرفر', value: `\`${guild.id}\``, inline: true },
-        { name: '👥 عدد الأعضاء', value: `\`${guild.memberCount}\``, inline: true },
-        { name: '👤 الشخص اللي يبي البوت يدخل', value: inviter, inline: false }
-      )
-      .setFooter({ text: 'يرجى اختيار قبول أو رفض' });
-
-    const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder()
-        .setCustomId(`accept_${guild.id}`)
-        .setLabel('قبول')
-        .setStyle(ButtonStyle.Success),
-      new ButtonBuilder()
-        .setCustomId(`deny_${guild.id}`)
-        .setLabel('رفض')
-        .setStyle(ButtonStyle.Danger)
-    );
-
-    await owner.send({ embeds: [embed], components: [row] });
-  } catch (error) {
-    console.error('Error handling guildCreate:', error);
-  }
-});
-
-// ************ التفاعل مع أزرار القبول والرفض بالخاص ************
-client.on('interactionCreate', async (interaction) => {
-  if (!interaction.isButton()) return;
-  if (interaction.user.id !== OWNER_ID) {
-    return interaction.reply({ content: '❌ هذا الزر ليس مخصصاً لك!', ephemeral: true });
-  }
-
-  const [action, guildId] = interaction.customId.split('_');
-  const guild = client.guilds.cache.get(guildId);
-
-  if (action === 'deny') {
-    if (guild) {
-      await guild.leave();
-      await interaction.update({ content: `❌ تم رفض السيرفر **${guild.name}** والخروج منه بنجاح.`, embeds: [], components: [] });
-    } else {
-      await interaction.update({ content: `❌ تم الرفض، ولكن البوت غير موجود في السيرفر حالياً.`, embeds: [], components: [] });
-    }
-  } else if (action === 'accept') {
-    await interaction.update({ content: `✅ تم قبول السيرفر **${guild ? guild.name : guildId}** وبقاء البوت فيه بنجاح!`, embeds: [], components: [] });
-  }
-});
-
-client.on('messageCreate', async (message) => {
-  if (message.author.bot) return;
-  if (!message.guild) return; // للتأكد أن الرسالة داخل سيرفر
-
-  const guildId = message.guild.id;
+function getSettings(guildId) {
   if (!serverSettings.has(guildId)) {
     serverSettings.set(guildId, {
       allowedRoleIds: [],
@@ -106,215 +53,1192 @@ client.on('messageCreate', async (message) => {
       autoImageUrl: null
     });
   }
-  const settings = serverSettings.get(guildId);
 
+  return serverSettings.get(guildId);
+}
+
+
+// =====================================================
+// نقاط السيرفر
+// =====================================================
+
+function getPoints(guildId) {
+  if (!serverPoints.has(guildId)) {
+    serverPoints.set(guildId, new Map());
+  }
+
+  return serverPoints.get(guildId);
+}
+
+
+// =====================================================
+// التحقق من الرول
+// =====================================================
+
+function hasAllowedRole(member, settings) {
+  if (!member) return false;
+
+  // الأدمن يقدر يستخدم البوت دائمًا
+  if (
+    member.permissions &&
+    member.permissions.has(PermissionFlagsBits.Administrator)
+  ) {
+    return true;
+  }
+
+  // إذا ما تحدد رول، يستجيب للجميع
+  if (settings.allowedRoleIds.length === 0) {
+    return true;
+  }
+
+  return settings.allowedRoleIds.some(roleId =>
+    member.roles.cache.has(roleId)
+  );
+}
+
+
+// =====================================================
+// ترتيب النقاط
+// =====================================================
+
+function getSortedPoints(guildId) {
+  const points = getPoints(guildId);
+
+  return Array.from(points.entries())
+    .sort((a, b) => b[1] - a[1]);
+}
+
+
+// =====================================================
+// إنشاء نتائج الراوند
+// =====================================================
+
+function buildResultsText(guildId) {
+  const sorted = getSortedPoints(guildId);
+
+  if (sorted.length === 0) {
+    return '🏆 لا توجد نقاط مسجلة حتى الآن.';
+  }
+
+  let text = '🏆 نتائج الراوند\n\n';
+
+  sorted.forEach(([userId, points], index) => {
+    let rank;
+
+    if (index === 0) {
+      rank = '🥇';
+    } else if (index === 1) {
+      rank = '🥈';
+    } else if (index === 2) {
+      rank = '🥉';
+    } else {
+      rank = `#${index + 1}`;
+    }
+
+    text += `${rank} <@${userId}> — **${points} نقطة**\n`;
+  });
+
+  return text;
+}
+
+
+// =====================================================
+// أوامر Slash
+// =====================================================
+
+const slashCommands = [
+
+  new SlashCommandBuilder()
+    .setName('رول')
+    .setDescription('اختيار الرولات التي يستجيب لها البوت'),
+
+  new SlashCommandBuilder()
+    .setName('راوند')
+    .setDescription('بدء راوند النقاط'),
+
+  new SlashCommandBuilder()
+    .setName('finish')
+    .setDescription('إنهاء الراوند وتجهيز النتائج'),
+
+  new SlashCommandBuilder()
+    .setName('كوماند')
+    .setDescription('عرض أوامر البوت')
+
+].map(command => command.toJSON());
+
+
+// =====================================================
+// تشغيل البوت
+// =====================================================
+
+client.once('ready', async () => {
+  console.log(`✅ تم تشغيل البوت: ${client.user.tag}`);
+
+  try {
+    const rest = new REST({
+      version: '10'
+    }).setToken(process.env.DISCORD_TOKEN);
+
+    await rest.put(
+      Routes.applicationCommands(client.user.id),
+      {
+        body: slashCommands
+      }
+    );
+
+    console.log('✅ تم تسجيل أوامر Slash.');
+  } catch (error) {
+    console.error('❌ خطأ في تسجيل Slash Commands:', error);
+  }
+});
+
+
+// =====================================================
+// INTERACTIONS
+// =====================================================
+
+client.on('interactionCreate', async interaction => {
+
+  if (!interaction.guild) return;
+
+  const guildId = interaction.guild.id;
+  const settings = getSettings(guildId);
+
+
+  // ===================================================
+  // Slash Commands
+  // ===================================================
+
+  if (interaction.isChatInputCommand()) {
+
+    // -----------------------------------------------
+    // /كوماند
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'كوماند') {
+
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle('📜 قائمة أوامر البوت')
+        .addFields(
+
+          {
+            name: '🎮 النقاط',
+            value:
+              '`/راوند` — بدء الراوند\n' +
+              '`+نقطه` — إضافة نقطة بالرد على رسالة\n' +
+              '`-نقطه` — خصم نقطة بالرد على رسالة\n' +
+              '`/finish` — إنهاء الراوند\n' +
+              '`-نقاط` — عرض النقاط'
+          },
+
+          {
+            name: '👑 الرولات',
+            value:
+              '`/رول` — اختيار الرولات المسموح لها'
+          },
+
+          {
+            name: '🏓 البوت',
+            value:
+              '`ping` أو `-ping` — سرعة البوت'
+          },
+
+          {
+            name: '🔒 القفل والفتح',
+            value:
+              '`-تحديد قفل وفتح روم #الروم`\n' +
+              '`-قفل`\n' +
+              '`-فتح`'
+          },
+
+          {
+            name: '🖼️ الصور',
+            value:
+              '`-تحديد روم صوره #الروم`\n' +
+              '`-تحديد صوره` + صورة\n' +
+              '`-ريموف صوره`\n' +
+              '`-قائمه صور`'
+          }
+
+        )
+        .setFooter({
+          text: 'جميع إعدادات البوت خاصة بهذا السيرفر.'
+        });
+
+      return interaction.reply({
+        embeds: [embed]
+      });
+    }
+
+
+    // -----------------------------------------------
+    // /رول
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'رول') {
+
+      if (
+        !interaction.member.permissions.has(
+          PermissionFlagsBits.Administrator
+        )
+      ) {
+        return interaction.reply({
+          content: '❌ هذا الأمر للأدمن فقط.',
+          ephemeral: true
+        });
+      }
+
+      const roles = interaction.guild.roles.cache
+        .filter(role => role.id !== interaction.guild.id)
+        .filter(role => !role.managed)
+        .sort((a, b) => b.position - a.position);
+
+      if (roles.size === 0) {
+        return interaction.reply({
+          content: '❌ ما فيه رولات متاحة.',
+          ephemeral: true
+        });
+      }
+
+      const roleOptions = Array.from(roles.values())
+        .slice(0, 25)
+        .map(role => ({
+          label: role.name.slice(0, 100),
+          value: role.id,
+          description: settings.allowedRoleIds.includes(role.id)
+            ? '✅ محدد حاليًا'
+            : 'اختيار هذا الرول'
+        }));
+
+      const menu = new StringSelectMenuBuilder()
+        .setCustomId(`choose_roles_${guildId}`)
+        .setPlaceholder('اختاري الرولات')
+        .setMinValues(0)
+        .setMaxValues(roleOptions.length)
+        .addOptions(roleOptions);
+
+      const row = new ActionRowBuilder()
+        .addComponents(menu);
+
+      const current =
+        settings.allowedRoleIds.length > 0
+          ? settings.allowedRoleIds.map(id => `<@&${id}>`).join(', ')
+          : 'لا توجد رولات محددة — البوت يستجيب للجميع';
+
+      return interaction.reply({
+        content:
+          `🎭 **الرولات الحالية:**\n${current}\n\n` +
+          'اختاري الرولات اللي تبين البوت يستجيب لأعضائها فقط:',
+        components: [row],
+        ephemeral: true
+      });
+    }
+
+
+    // -----------------------------------------------
+    // /راوند
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'راوند') {
+
+      if (!hasAllowedRole(interaction.member, settings)) {
+        return interaction.reply({
+          content: '❌ ما عندك رول مسموح له باستخدام البوت.',
+          ephemeral: true
+        });
+      }
+
+      if (activeRounds.get(guildId)) {
+        return interaction.reply({
+          content: '⚠️ فيه راوند شغال حاليًا.',
+          ephemeral: true
+        });
+      }
+
+      activeRounds.set(guildId, true);
+
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle('🎮 بدأ الراوند!')
+        .setDescription(
+          '🔥 بدأ احتساب النقاط!\n\n' +
+          '➕ **إضافة نقطة:**\n' +
+          'ردي على رسالة الشخص واكتبي `+نقطه`\n\n' +
+          '➖ **خصم نقطة:**\n' +
+          'ردي على رسالة الشخص واكتبي `-نقطه`\n\n' +
+          '🏁 عند الانتهاء استخدمي `/finish`'
+        );
+
+      return interaction.reply({
+        embeds: [embed]
+      });
+    }
+
+
+    // -----------------------------------------------
+    // /finish
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'finish') {
+
+      if (!hasAllowedRole(interaction.member, settings)) {
+        return interaction.reply({
+          content: '❌ ما عندك رول مسموح له باستخدام البوت.',
+          ephemeral: true
+        });
+      }
+
+      if (!activeRounds.get(guildId)) {
+        return interaction.reply({
+          content: '⚠️ ما فيه راوند شغال حاليًا.',
+          ephemeral: true
+        });
+      }
+
+      const results = buildResultsText(guildId);
+
+      const embed = new EmbedBuilder()
+        .setColor(EMBED_COLOR)
+        .setTitle('🏆 نتائج الراوند')
+        .setDescription(results)
+        .setFooter({
+          text: 'تقدرين تعدلين الرسالة قبل إرسالها.'
+        });
+
+      const buttons = new ActionRowBuilder()
+        .addComponents(
+
+          new ButtonBuilder()
+            .setCustomId(`edit_finish_${guildId}_${interaction.user.id}`)
+            .setLabel('تعديل الرسالة')
+            .setEmoji('✏️')
+            .setStyle(ButtonStyle.Primary),
+
+          new ButtonBuilder()
+            .setCustomId(`send_finish_${guildId}_${interaction.user.id}`)
+            .setLabel('إرسال')
+            .setEmoji('📤')
+            .setStyle(ButtonStyle.Success),
+
+          new ButtonBuilder()
+            .setCustomId(`cancel_finish_${guildId}_${interaction.user.id}`)
+            .setLabel('إلغاء')
+            .setEmoji('❌')
+            .setStyle(ButtonStyle.Danger)
+
+        );
+
+      return interaction.reply({
+        embeds: [embed],
+        components: [buttons]
+      });
+    }
+  }
+
+
+  // ===================================================
+  // اختيار الرولات
+  // ===================================================
+
+  if (interaction.isStringSelectMenu()) {
+
+    if (!interaction.customId.startsWith('choose_roles_')) {
+      return;
+    }
+
+    if (
+      !interaction.member.permissions.has(
+        PermissionFlagsBits.Administrator
+      )
+    ) {
+      return interaction.reply({
+        content: '❌ هذا الخيار للأدمن فقط.',
+        ephemeral: true
+      });
+    }
+
+    settings.allowedRoleIds = interaction.values;
+
+    if (interaction.values.length === 0) {
+
+      return interaction.update({
+        content:
+          '🗑️ تم إلغاء تحديد الرولات.\n\n' +
+          'البوت الآن يستجيب للجميع.',
+        components: []
+      });
+    }
+
+    const rolesText = interaction.values
+      .map(id => `<@&${id}>`)
+      .join('\n');
+
+    return interaction.update({
+      content:
+        '✅ **تم تحديد الرولات بنجاح!**\n\n' +
+        rolesText +
+        '\n\nالبوت الآن يستجيب لأعضاء هذه الرولات فقط.',
+      components: []
+    });
+  }
+
+
+  // ===================================================
+  // أزرار النتائج
+  // ===================================================
+
+  if (interaction.isButton()) {
+
+    // -----------------------------------------------
+    // تعديل النتائج
+    // -----------------------------------------------
+
+    if (interaction.customId.startsWith('edit_finish_')) {
+
+      const parts = interaction.customId.split('_');
+      const userId = parts[3];
+
+      if (interaction.user.id !== userId) {
+        return interaction.reply({
+          content: '❌ هذه النتيجة مو لك.',
+          ephemeral: true
+        });
+      }
+
+      const results = buildResultsText(guildId);
+
+      const modal = new ModalBuilder()
+        .setCustomId(
+          `finish_modal_${guildId}_${interaction.user.id}`
+        )
+        .setTitle('✏️ تعديل نتائج الراوند');
+
+      const textInput = new TextInputBuilder()
+        .setCustomId('finish_text')
+        .setLabel('عدلي رسالة النتائج')
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(4000)
+        .setValue(results.slice(0, 4000));
+
+      const row = new ActionRowBuilder()
+        .addComponents(textInput);
+
+      modal.addComponents(row);
+
+      return interaction.showModal(modal);
+    }
+
+
+    // -----------------------------------------------
+    // إرسال النتائج الأصلية
+    // -----------------------------------------------
+
+    if (interaction.customId.startsWith('send_finish_')) {
+
+      const parts = interaction.customId.split('_');
+      const userId = parts[3];
+
+      if (interaction.user.id !== userId) {
+        return interaction.reply({
+          content: '❌ هذه النتيجة مو لك.',
+          ephemeral: true
+        });
+      }
+
+      const results = buildResultsText(guildId);
+
+      await interaction.channel.send({
+        content: results
+      });
+
+      activeRounds.set(guildId, false);
+
+      return interaction.update({
+        content: '✅ تم إرسال النتائج.',
+        embeds: [],
+        components: []
+      });
+    }
+
+
+    // -----------------------------------------------
+    // إلغاء
+    // -----------------------------------------------
+
+    if (interaction.customId.startsWith('cancel_finish_')) {
+
+      const parts = interaction.customId.split('_');
+      const userId = parts[3];
+
+      if (interaction.user.id !== userId) {
+        return interaction.reply({
+          content: '❌ هذا الزر مو لك.',
+          ephemeral: true
+        });
+      }
+
+      activeRounds.set(guildId, false);
+
+      return interaction.update({
+        content: '❌ تم إنهاء الراوند بدون إرسال النتائج.',
+        embeds: [],
+        components: []
+      });
+    }
+
+
+    // -----------------------------------------------
+    // إرسال النص المعدل
+    // -----------------------------------------------
+
+    if (interaction.customId.startsWith('send_custom_finish_')) {
+
+      const parts = interaction.customId.split('_');
+      const userId = parts[3];
+
+      if (interaction.user.id !== userId) {
+        return interaction.reply({
+          content: '❌ هذه المسودة مو لك.',
+          ephemeral: true
+        });
+      }
+
+      const key = `${guildId}_${interaction.user.id}`;
+
+      if (!finishDrafts.has(key)) {
+        return interaction.reply({
+          content:
+            '❌ انتهت المسودة، استخدمي `/finish` مرة ثانية.',
+          ephemeral: true
+        });
+      }
+
+      const text = finishDrafts.get(key);
+
+      await interaction.channel.send({
+        content: text
+      });
+
+      finishDrafts.delete(key);
+      activeRounds.set(guildId, false);
+
+      return interaction.update({
+        content: '✅ تم نشر النتائج من البوت.',
+        embeds: [],
+        components: []
+      });
+    }
+  }
+
+
+  // ===================================================
+  // Modal تعديل النتائج
+  // ===================================================
+
+  if (interaction.isModalSubmit()) {
+
+    if (!interaction.customId.startsWith('finish_modal_')) {
+      return;
+    }
+
+    const editedText =
+      interaction.fields.getTextInputValue('finish_text');
+
+    if (!editedText.trim()) {
+      return interaction.reply({
+        content: '❌ الرسالة فاضية.',
+        ephemeral: true
+      });
+    }
+
+    const key = `${guildId}_${interaction.user.id}`;
+
+    finishDrafts.set(key, editedText);
+
+    const embed = new EmbedBuilder()
+      .setColor(EMBED_COLOR)
+      .setTitle('🏆 معاينة الرسالة المعدلة')
+      .setDescription(editedText)
+      .setFooter({
+        text: 'إذا كل شيء تمام اضغطي إرسال.'
+      });
+
+    const buttons = new ActionRowBuilder()
+      .addComponents(
+
+        new ButtonBuilder()
+          .setCustomId(
+            `send_custom_finish_${guildId}_${interaction.user.id}`
+          )
+          .setLabel('إرسال')
+          .setEmoji('📤')
+          .setStyle(ButtonStyle.Success),
+
+        new ButtonBuilder()
+          .setCustomId(
+            `cancel_finish_${guildId}_${interaction.user.id}`
+          )
+          .setLabel('إلغاء')
+          .setEmoji('❌')
+          .setStyle(ButtonStyle.Danger)
+
+      );
+
+    return interaction.reply({
+      embeds: [embed],
+      components: [buttons]
+    });
+  }
+
+});
+
+
+// =====================================================
+// الرسائل العادية
+// =====================================================
+
+client.on('messageCreate', async message => {
+
+  if (message.author.bot) return;
+  if (!message.guild) return;
+
+  const guildId = message.guild.id;
+  const settings = getSettings(guildId);
+  const points = getPoints(guildId);
   const content = message.content.trim();
 
-  // ************ أمر تحديد رولات البوت (للأونر أو المشرفين) ************
-  if (content.startsWith('-تحديد رولات البوت')) {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ هذا الأمر مخصص لمشرفي/أونر السيرفر فقط لتحديد الرولات المسموحة للبوت.');
+
+  // ===================================================
+  // -نقاط
+  // ===================================================
+
+  if (content === '-نقاط') {
+
+    if (points.size === 0) {
+      return message.reply(
+        '🏆 لا توجد نقاط مسجلة حتى الآن.'
+      );
     }
 
-    const mentionedRoles = message.mentions.roles;
-    if (mentionedRoles.size === 0) {
-      return message.reply('❌ يرجى منشن رول واحد على الأقل، مثال: `-تحديد رولات البوت @رول`');
-    }
+    const sorted =
+      getSortedPoints(guildId).slice(0, 10);
 
-    settings.allowedRoleIds = mentionedRoles.map(r => r.id);
-    const rolesList = mentionedRoles.map(r => `<@&${r.id}>`).join(', ');
-    return message.reply(`✅ تم تحديث الرولات التي يسمح للبوت الاستماع لها في هذا السيرفر: ${rolesList}`);
-  }
+    let description = '';
 
-  // ************ عرض رولات البوت الحالية ************
-  if (content === '-رولات البوت') {
-    if (settings.allowedRoleIds.length === 0) {
-      return message.reply('⚠️ لم يتم تحديد أي رولات بعد لهذا السيرفر. استخدم `-تحديد رولات البوت @رول`.');
-    }
-    const rolesList = settings.allowedRoleIds.map(id => `<@&${id}>`).join(', ');
-    return message.reply(`📌 **رولات البوت المعتمدة حالياً:** ${rolesList}`);
-  }
+    sorted.forEach(([userId, value], index) => {
 
-  // ************ حذف وإعادة ضبط رولات البوت ************
-  if (content === '-حذف رولات البوت') {
-    if (!message.member.permissions.has(PermissionFlagsBits.Administrator)) {
-      return message.reply('❌ هذا الأمر مخصص لمشرفي/أونر السيرفر فقط.');
-    }
-    settings.allowedRoleIds = [];
-    return message.reply('🗑️ تم حذف وإعادة ضبط رولات البوت في هذا السيرفر بنجاح.');
-  }
+      let rank;
 
-  // التحقق مما إذا كان السيرفر قد حدد رولات مسموحة أم لا (إذا تم تحديدها، يجب أن يمتلك العضو إحداها)
-  if (settings.allowedRoleIds.length > 0) {
-    const hasAllowedRole = settings.allowedRoleIds.some(roleId => message.member.roles.cache.has(roleId));
-    if (!hasAllowedRole) return;
-  }
+      if (index === 0) rank = '🥇';
+      else if (index === 1) rank = '🥈';
+      else if (index === 2) rank = '🥉';
+      else rank = `#${index + 1}`;
 
-  // ************ 1. أمر قائمة الأوامر (-ك) ************
-  if (content === '-ك' || content === '-commands') {
+      description +=
+        `${rank} <@${userId}> — **${value} نقطة**\n`;
+    });
+
     const embed = new EmbedBuilder()
-      .setColor('#5865F2')
-      .setTitle('📜 قائمة أوامر البوت المتاحة لك')
-      .setDescription('هذه هي جميع الأوامر المبرمجة في بوتك الخاص:')
-      .addFields(
-        { name: '🏓 `ping` أو `-ping`', value: 'لعرض سرعة استجابة البوت (Latency).' },
-        { name: '📌 `-تحديد رولات البوت @رول`', value: 'لتحديد الرولات المسموح لها استخدام الأوامر (للأدمن).' },
-        { name: '📌 `-رولات البوت`', value: 'لعرض الرولات المعتمدة في السيرفر.' },
-        { name: '🗑️ `-حذف رولات البوت`', value: 'لحذف وإعادة ضبط رولات البوت المعتمدة.' },
-        { name: '📌 `-تحديد قفل وفتح روم #الروم`', value: 'لتحديد الروم المخصص لأوامر القفل والفتح.' },
-        { name: '🔒 `-قفل`', value: 'يقفل الروم المحددة تلقائياً بحيث لا يمكن لأحد الكتابة فيها.' },
-        { name: '🔓 `-فتح`', value: 'يفتح الروم المحددة مرة أخرى.' },
-        { name: '🖼️ `-تحديد روم صوره #الروم`', value: 'لتحديد روم معين لإرسال الصورة التلقائية فيه.' },
-        { name: '📸 `-تحديد صوره`', value: 'لرفع وتحديد الصورة التي ستُرسل تلقائياً (أرفقها مع الأمر).' },
-        { name: '🗑️ `-ريموف صوره`', value: 'لإيقاف وإلغاء تحديد روم الصور التلقائية.' },
-        { name: '📋 `-قائمه صور`', value: 'لعرض الروم المفعل حالياً لإرسال الصور.' },
-        { name: '📋 `-ك` أو `-commands`', value: 'يعرض لك هذه قائمة الأوامر وفوائدها.' }
+      .setColor(EMBED_COLOR)
+      .setTitle('🏆 النقاط')
+      .setDescription(description)
+      .setFooter({
+        text: 'توب 10'
+      });
+
+    return message.reply({
+      embeds: [embed]
+    });
+  }
+
+
+  // ===================================================
+  // +نقطه
+  // ===================================================
+
+  if (content === '+نقطه') {
+
+    if (!hasAllowedRole(message.member, settings)) {
+      return;
+    }
+
+    if (!activeRounds.get(guildId)) {
+      return message.reply(
+        '⚠️ ما فيه راوند شغال، استخدمي `/راوند` أول.'
+      );
+    }
+
+    if (!message.reference) {
+      return message.reply(
+        '❌ لازم تردين على رسالة الشخص.'
+      );
+    }
+
+    let targetMessage;
+
+    try {
+      targetMessage =
+        await message.channel.messages.fetch(
+          message.reference.messageId
+        );
+    } catch {
+      return message.reply(
+        '❌ ما قدرت أوصل للرسالة.'
+      );
+    }
+
+    const targetUser = targetMessage.author;
+
+    if (targetUser.bot) {
+      return message.reply(
+        '❌ ما تقدرين تعطين نقطة لبوت.'
+      );
+    }
+
+    const current =
+      points.get(targetUser.id) || 0;
+
+    points.set(
+      targetUser.id,
+      current + 1
+    );
+
+    return message.react('✅');
+  }
+
+
+  // ===================================================
+  // -نقطه
+  // ===================================================
+
+  if (content === '-نقطه') {
+
+    if (!hasAllowedRole(message.member, settings)) {
+      return;
+    }
+
+    if (!activeRounds.get(guildId)) {
+      return message.reply(
+        '⚠️ ما فيه راوند شغال، استخدمي `/راوند` أول.'
+      );
+    }
+
+    if (!message.reference) {
+      return message.reply(
+        '❌ لازم تردين على رسالة الشخص.'
+      );
+    }
+
+    let targetMessage;
+
+    try {
+      targetMessage =
+        await message.channel.messages.fetch(
+          message.reference.messageId
+        );
+    } catch {
+      return message.reply(
+        '❌ ما قدرت أوصل للرسالة.'
+      );
+    }
+
+    const targetUser = targetMessage.author;
+
+    if (targetUser.bot) {
+      return message.reply(
+        '❌ ما تقدرين تخصمين من بوت.'
+      );
+    }
+
+    const current =
+      points.get(targetUser.id) || 0;
+
+    points.set(
+      targetUser.id,
+      current - 1
+    );
+
+    return message.react('✅');
+  }
+
+
+  // ===================================================
+  // التحقق من الرول
+  // ===================================================
+
+  if (!hasAllowedRole(message.member, settings)) {
+    return;
+  }
+
+
+  // ===================================================
+  // -ك / -commands
+  // ===================================================
+
+  if (
+    content === '-ك' ||
+    content === '-commands'
+  ) {
+
+    const embed = new EmbedBuilder()
+      .setColor(EMBED_COLOR)
+      .setTitle('📜 أوامر البوت')
+      .setDescription(
+        '**النقاط:**\n' +
+        '`/راوند`\n' +
+        '`+نقطه` بالرد\n' +
+        '`-نقطه` بالرد\n' +
+        '`/finish`\n' +
+        '`-نقاط`\n\n' +
+
+        '**الرولات:**\n' +
+        '`/رول`\n\n' +
+
+        '**البوت:**\n' +
+        '`ping`\n' +
+        '`-ping`\n\n' +
+
+        '**القفل:**\n' +
+        '`-تحديد قفل وفتح روم #الروم`\n' +
+        '`-قفل`\n' +
+        '`-فتح`\n\n' +
+
+        '**الصور:**\n' +
+        '`-تحديد روم صوره #الروم`\n' +
+        '`-تحديد صوره` + صورة\n' +
+        '`-ريموف صوره`\n' +
+        '`-قائمه صور`'
+      );
+
+    return message.reply({
+      embeds: [embed]
+    });
+  }
+
+
+  // ===================================================
+  // Ping
+  // ===================================================
+
+  if (
+    content === 'ping' ||
+    content === '-ping'
+  ) {
+
+    const embed = new EmbedBuilder()
+      .setColor(EMBED_COLOR)
+      .setTitle('🏓 Pong!')
+      .setDescription(
+        `سرعة البوت: **${client.ws.ping}ms**`
+      );
+
+    return message.reply({
+      embeds: [embed]
+    });
+  }
+
+
+  // ===================================================
+  // تحديد روم القفل والفتح
+  // ===================================================
+
+  if (
+    content.startsWith('-تحديد قفل وفتح روم')
+  ) {
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.ManageChannels
       )
-      .setFooter({ text: 'البوت مخصص لحاملي الرول المعتمد فقط.' });
-
-    return message.reply({ embeds: [embed] });
-  }
-
-  // ************ 2. أمر ping ************
-  if (content === 'ping' || content === '-ping') {
-    const ping = client.ws.ping;
-
-    const embed = new EmbedBuilder()
-      .setColor('#2b2d31')
-      .setDescription(`🏓 **Pong!**\n\n\`${ping}ms\`\n░░░░░░░░░░`);
-
-    return message.reply({ embeds: [embed] });
-  }
-
-  // ************ 3. أمر تحديد روم القفل والفتح ************
-  if (content.startsWith('-تحديد قفل وفتح روم')) {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
+    ) {
+      return message.reply(
+        '❌ ما عندك صلاحية إدارة الرومات.'
+      );
     }
 
-    const mentionedChannel = message.mentions.channels.first();
-    if (!mentionedChannel) {
-      return message.reply('❌ يرجى منشن الروم المطلوب، مثال: `-تحديد قفل وفتح روم #الروم`');
+    const channel =
+      message.mentions.channels.first();
+
+    if (!channel) {
+      return message.reply(
+        '❌ حددي الروم، مثال:\n`-تحديد قفل وفتح روم #الروم`'
+      );
     }
 
-    settings.targetChannelId = mentionedChannel.id;
-    return message.reply(`✅ تم تحديد الروم <#${settings.targetChannelId}> للتحكم بالقفل والفتح!`);
+    settings.targetChannelId = channel.id;
+
+    return message.reply(
+      `✅ تم تحديد ${channel} كروم القفل والفتح.`
+    );
   }
 
-  // ************ 4. أمر قفل الروم المحدد ************
+
+  // ===================================================
+  // قفل
+  // ===================================================
+
   if (content === '-قفل') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية التحكم بالرومات.');
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.ManageChannels
+      )
+    ) {
+      return;
     }
 
     if (!settings.targetChannelId) {
-      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدم أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
+      return message.reply(
+        '❌ ما تحدد روم القفل والفتح.'
+      );
     }
 
-    if (message.channel.id !== settings.targetChannelId) {
-      return message.reply(`⚠️ هذا الأمر يعمل فقط في الروم المحددة: <#${settings.targetChannelId}>`);
+    const channel =
+      message.guild.channels.cache.get(
+        settings.targetChannelId
+      );
+
+    if (!channel) {
+      return message.reply(
+        '❌ الروم المحدد غير موجود.'
+      );
     }
 
     try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: false
-      });
-      return message.channel.send('🔒 تم قفل هذه الروم بنجاح.');
-    } catch (error) {
-      console.error(error);
-      return message.reply('❌ حدث خطأ أثناء القفل، تأكد من صلاحيات البوت.');
+
+      await channel.permissionOverwrites.edit(
+        message.guild.roles.everyone,
+        {
+          SendMessages: false
+        }
+      );
+
+      return message.reply(
+        `🔒 تم قفل ${channel}.`
+      );
+
+    } catch {
+      return message.reply(
+        '❌ ما قدرت أقفل الروم. تأكدي من صلاحيات البوت.'
+      );
     }
   }
 
-  // ************ 5. أمر فتح الروم المحدد ************
+
+  // ===================================================
+  // فتح
+  // ===================================================
+
   if (content === '-فتح') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية التحكم بالرومات.');
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.ManageChannels
+      )
+    ) {
+      return;
     }
 
     if (!settings.targetChannelId) {
-      return message.reply('⚠️ لم يتم تحديد روم بعد! استخدم أمر `-تحديد قفل وفتح روم #الروم` أولاً.');
+      return message.reply(
+        '❌ ما تحدد روم القفل والفتح.'
+      );
     }
 
-    if (message.channel.id !== settings.targetChannelId) {
-      return message.reply(`⚠️ هذا الأمر يعمل فقط في الروم المحددة: <#${settings.targetChannelId}>`);
+    const channel =
+      message.guild.channels.cache.get(
+        settings.targetChannelId
+      );
+
+    if (!channel) {
+      return message.reply(
+        '❌ الروم المحدد غير موجود.'
+      );
     }
 
     try {
-      await message.channel.permissionOverwrites.edit(message.guild.roles.everyone, {
-        SendMessages: true
-      });
-      return message.channel.send('🔓 تم فتح هذه الروم بنجاح.');
-    } catch (error) {
-      console.error(error);
-      return message.reply('❌ حدث خطأ أثناء الفتح، تأكد من صلاحيات البوت.');
+
+      await channel.permissionOverwrites.edit(
+        message.guild.roles.everyone,
+        {
+          SendMessages: true
+        }
+      );
+
+      return message.reply(
+        `🔓 تم فتح ${channel}.`
+      );
+
+    } catch {
+      return message.reply(
+        '❌ ما قدرت أفتح الروم.'
+      );
     }
   }
 
-  // ************ 6. أمر تحديد روم الصورة تلقائياً ************
-  if (content.startsWith('-تحديد روم صوره')) {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
+
+  // ===================================================
+  // تحديد روم الصور
+  // ===================================================
+
+  if (
+    content.startsWith('-تحديد روم صوره')
+  ) {
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.Administrator
+      )
+    ) {
+      return message.reply(
+        '❌ هذا الأمر للأدمن فقط.'
+      );
     }
 
-    const mentionedChannel = message.mentions.channels.first();
-    if (!mentionedChannel) {
-      return message.reply('❌ يرجى منشن الروم المطلوب، مثال: `-تحديد روم صوره #الروم`');
+    const channel =
+      message.mentions.channels.first();
+
+    if (!channel) {
+      return message.reply(
+        '❌ حددي الروم، مثال:\n`-تحديد روم صوره #الروم`'
+      );
     }
 
-    settings.autoImageChannelId = mentionedChannel.id;
-    return message.reply(`✅ تم تحديد الروم <#${settings.autoImageChannelId}> لإرسال الصورة تلقائياً! لا تنس تحديد الصورة بأمر \`-تحديد صوره\`.`);
+    settings.autoImageChannelId = channel.id;
+
+    return message.reply(
+      `✅ تم تحديد ${channel} كروم الصور التلقائية.`
+    );
   }
 
-  // ************ 7. أمر تحديد الصورة ************
+
+  // ===================================================
+  // تحديد الصورة
+  // ===================================================
+
   if (content === '-تحديد صوره') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.Administrator
+      )
+    ) {
+      return message.reply(
+        '❌ هذا الأمر للأدمن فقط.'
+      );
     }
 
-    const attachment = message.attachments.first();
-    if (!attachment) {
-      return message.reply('❌ يرجى إرفاق صورة مع هذا الأمر.');
+    if (!message.attachments.size) {
+      return message.reply(
+        '❌ أرفقي الصورة مع الأمر.'
+      );
     }
 
-    const contentType = attachment.contentType;
-    if (!contentType || (!contentType.startsWith('image/jpeg') && !contentType.startsWith('image/png') && !contentType.startsWith('image/gif'))) {
-      return message.reply('❌ الصيغة غير مدعومة! يرجى رفع صورة بصيغة GIF أو PNG أو JPG.');
+    const attachment =
+      message.attachments.first();
+
+    const allowed =
+      ['image/jpeg', 'image/png', 'image/gif'];
+
+    if (!allowed.includes(attachment.contentType)) {
+      return message.reply(
+        '❌ مسموح فقط JPG / PNG / GIF.'
+      );
     }
 
     settings.autoImageUrl = attachment.url;
-    return message.reply('✅ تم تحديد الصورة بنجاح وسيتم إرسالها تلقائياً بعد كل رسالة في الروم المحدد.');
+
+    return message.reply(
+      '✅ تم تحديد الصورة بنجاح.'
+    );
   }
 
-  // ************ 8. أمر إلغاء روم الصور (-ريموف صوره) ************
+
+  // ===================================================
+  // إزالة الصورة
+  // ===================================================
+
   if (content === '-ريموف صوره') {
-    if (!message.member.permissions.has(PermissionFlagsBits.ManageChannels)) {
-      return message.reply('❌ ما عندك صلاحية إدارة الرومات.');
+
+    if (
+      !message.member.permissions.has(
+        PermissionFlagsBits.Administrator
+      )
+    ) {
+      return message.reply(
+        '❌ هذا الأمر للأدمن فقط.'
+      );
     }
 
-    settings.autoImageChannelId = null;
     settings.autoImageUrl = null;
-    return message.reply('🗑️ تم إلغاء تفعيل وإزالة روم الصور التلقائية بنجاح.');
+
+    return message.reply(
+      '🗑️ تم حذف الصورة المحددة.'
+    );
   }
 
-  // ************ 9. أمر عرض قائمة صور (-قائمه صور) ************
+
+  // ===================================================
+  // قائمة الصور
+  // ===================================================
+
   if (content === '-قائمه صور') {
-    const channelName = settings.autoImageChannelId ? `<#${settings.autoImageChannelId}>` : 'غير محدد';
-    const hasImage = settings.autoImageUrl ? '✅ موجودة' : '❌ غير محددة';
-    return message.reply(`📌 **روم الصور التلقائية الحالي:** ${channelName}\n🖼️ **حالة الصورة:** ${hasImage}`);
+
+    const embed = new EmbedBuilder()
+      .setColor(EMBED_COLOR)
+      .setTitle('🖼️ إعدادات الصور')
+      .addFields(
+        {
+          name: 'الروم',
+          value: settings.autoImageChannelId
+            ? `<#${settings.autoImageChannelId}>`
+            : 'غير محدد'
+        },
+        {
+          name: 'الصورة',
+          value: settings.autoImageUrl
+            ? '✅ محددة'
+            : '❌ غير محددة'
+        }
+      );
+
+    return message.reply({
+      embeds: [embed]
+    });
   }
 
-  // ************ 10. ميزة إرسال الصورة تلقائياً ************
-  if (settings.autoImageChannelId && settings.autoImageUrl && message.channel.id === settings.autoImageChannelId) {
+
+  // ===================================================
+  // إرسال الصورة تلقائيًا
+  // ===================================================
+
+  if (
+    settings.autoImageChannelId &&
+    settings.autoImageUrl &&
+    message.channel.id === settings.autoImageChannelId
+  ) {
+
     try {
-      await message.channel.send({ files: [settings.autoImageUrl] });
+
+      await message.channel.send({
+        files: [settings.autoImageUrl]
+      });
+
     } catch (error) {
-      console.error('Error sending auto image:', error);
+      console.error(
+        'خطأ في إرسال الصورة:',
+        error
+      );
     }
   }
 
 });
 
+
+// =====================================================
+// تسجيل الدخول
+// =====================================================
+
 client.login(process.env.DISCORD_TOKEN);
-
-
