@@ -315,4 +315,5 @@ client.on('messageCreate', async (message) => {
 
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login('MTU1MTI4MDk0MjY3NTY1Njg0NA.Gh-DAP.hNP7NE-SOErhIlJdbh7BLlMQy-uqpfy-ABONAI');
+
