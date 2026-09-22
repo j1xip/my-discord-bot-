@@ -31,6 +31,16 @@ const client = new Client({
 const EMBED_COLOR = '#0B1F3A';
 
 // =====================================================
+// مالكة البوت
+// =====================================================
+
+const BOT_OWNER_ID = '1423724725519126619';
+
+function isBotOwner(userId) {
+  return userId === BOT_OWNER_ID;
+}
+
+// =====================================================
 // التخزين
 // =====================================================
 
@@ -107,6 +117,11 @@ function startNewRound(guildId) {
 
 function hasAllowedRole(member, settings) {
   if (!member) return false;
+
+  // مالكة البوت تتجاوز جميع قيود الرولات والصلاحيات
+  if (isBotOwner(member.id)) {
+    return true;
+  }
 
   if (
     member.permissions &&
@@ -325,6 +340,7 @@ client.on('interactionCreate', async interaction => {
     if (interaction.commandName === 'رول') {
 
       if (
+        !isBotOwner(interaction.user.id) &&
         !interaction.member.permissions.has(
           PermissionFlagsBits.Administrator
         )
@@ -402,7 +418,6 @@ client.on('interactionCreate', async interaction => {
         });
       }
 
-      // يبدأ راوند جديد ويصفر نقاط الراوند فقط
       startNewRound(guildId);
 
       const embed = new EmbedBuilder()
@@ -540,6 +555,7 @@ client.on('interactionCreate', async interaction => {
     }
 
     if (
+      !isBotOwner(interaction.user.id) &&
       !interaction.member.permissions.has(
         PermissionFlagsBits.Administrator
       )
@@ -1069,6 +1085,7 @@ client.on('messageCreate', async message => {
   ) {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.ManageChannels
       )
@@ -1102,6 +1119,7 @@ client.on('messageCreate', async message => {
   if (content === '-قفل') {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.ManageChannels
       )
@@ -1154,6 +1172,7 @@ client.on('messageCreate', async message => {
   if (content === '-فتح') {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.ManageChannels
       )
@@ -1208,6 +1227,7 @@ client.on('messageCreate', async message => {
   ) {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.Administrator
       )
@@ -1241,6 +1261,7 @@ client.on('messageCreate', async message => {
   if (content === '-تحديد صوره') {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.Administrator
       )
@@ -1283,6 +1304,7 @@ client.on('messageCreate', async message => {
   if (content === '-ريموف صوره') {
 
     if (
+      !isBotOwner(message.author.id) &&
       !message.member.permissions.has(
         PermissionFlagsBits.Administrator
       )
