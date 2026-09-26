@@ -15,6 +15,8 @@ const {
   TextInputStyle
 } = require('discord.js');
 
+const exitCommand = require('./exit.js');
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -56,7 +58,6 @@ const roundPoints = new Map();
 const activeRounds = new Map();
 const finishDrafts = new Map();
 
-
 // =====================================================
 // إعدادات السيرفر
 // =====================================================
@@ -74,7 +75,6 @@ function getSettings(guildId) {
   return serverSettings.get(guildId);
 }
 
-
 // =====================================================
 // النقاط الدائمة
 // =====================================================
@@ -86,7 +86,6 @@ function getPoints(guildId) {
 
   return serverPoints.get(guildId);
 }
-
 
 // =====================================================
 // نقاط الراوند
@@ -100,7 +99,6 @@ function getRoundPoints(guildId) {
   return roundPoints.get(guildId);
 }
 
-
 // =====================================================
 // بدء راوند جديد
 // =====================================================
@@ -109,7 +107,6 @@ function startNewRound(guildId) {
   roundPoints.set(guildId, new Map());
   activeRounds.set(guildId, true);
 }
-
 
 // =====================================================
 // التحقق من الرول
@@ -139,7 +136,6 @@ function hasAllowedRole(member, settings) {
   );
 }
 
-
 // =====================================================
 // ترتيب النقاط الدائمة
 // =====================================================
@@ -150,7 +146,6 @@ function getSortedPoints(guildId) {
   return Array.from(points.entries())
     .sort((a, b) => b[1] - a[1]);
 }
-
 
 // =====================================================
 // ترتيب نقاط الراوند
@@ -163,7 +158,6 @@ function getSortedRoundPoints(guildId) {
     .filter(([userId, points]) => points !== 0)
     .sort((a, b) => b[1] - a[1]);
 }
-
 
 // =====================================================
 // نتائج الراوند
@@ -197,7 +191,6 @@ function buildResultsText(guildId) {
   return text;
 }
 
-
 // =====================================================
 // أوامر Slash
 // =====================================================
@@ -222,10 +215,12 @@ const slashCommands = [
 
   new SlashCommandBuilder()
     .setName('كوماند')
-    .setDescription('عرض أوامر البوت')
+    .setDescription('عرض أوامر البوت'),
+
+  // أمر خروج البوت
+  exitCommand.data
 
 ].map(command => command.toJSON());
-
 
 // =====================================================
 // تشغيل البوت
@@ -252,7 +247,6 @@ client.once('ready', async () => {
   }
 });
 
-
 // =====================================================
 // INTERACTIONS
 // =====================================================
@@ -264,12 +258,19 @@ client.on('interactionCreate', async interaction => {
   const guildId = interaction.guild.id;
   const settings = getSettings(guildId);
 
-
   // ===================================================
   // Slash Commands
   // ===================================================
 
   if (interaction.isChatInputCommand()) {
+
+    // -----------------------------------------------
+    // /خروج_نهائي
+    // -----------------------------------------------
+
+    if (interaction.commandName === 'خروج_نهائي') {
+      return exitCommand.execute(interaction);
+    }
 
     // -----------------------------------------------
     // /كوماند
@@ -331,7 +332,6 @@ client.on('interactionCreate', async interaction => {
         embeds: [embed]
       });
     }
-
 
     // -----------------------------------------------
     // /رول
@@ -397,7 +397,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-
     // -----------------------------------------------
     // /راوند
     // -----------------------------------------------
@@ -436,7 +435,6 @@ client.on('interactionCreate', async interaction => {
         embeds: [embed]
       });
     }
-
 
     // -----------------------------------------------
     // /نقاط
@@ -481,7 +479,6 @@ client.on('interactionCreate', async interaction => {
         embeds: [embed]
       });
     }
-
 
     // -----------------------------------------------
     // /finish
@@ -543,7 +540,6 @@ client.on('interactionCreate', async interaction => {
     }
   }
 
-
   // ===================================================
   // اختيار الرولات
   // ===================================================
@@ -590,7 +586,6 @@ client.on('interactionCreate', async interaction => {
       components: []
     });
   }
-
 
   // ===================================================
   // أزرار النتائج
@@ -639,7 +634,6 @@ client.on('interactionCreate', async interaction => {
       return interaction.showModal(modal);
     }
 
-
     // -----------------------------------------------
     // إرسال النتائج الأصلية
     // -----------------------------------------------
@@ -671,7 +665,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
 
-
     // -----------------------------------------------
     // إلغاء
     // -----------------------------------------------
@@ -696,7 +689,6 @@ client.on('interactionCreate', async interaction => {
         components: []
       });
     }
-
 
     // -----------------------------------------------
     // إرسال النص المعدل
@@ -740,7 +732,6 @@ client.on('interactionCreate', async interaction => {
       });
     }
   }
-
 
   // ===================================================
   // Modal تعديل النتائج
@@ -803,7 +794,6 @@ client.on('interactionCreate', async interaction => {
 
 });
 
-
 // =====================================================
 // الرسائل العادية
 // =====================================================
@@ -823,7 +813,6 @@ client.on('messageCreate', async message => {
   const currentRoundPoints = getRoundPoints(guildId);
 
   const content = message.content.trim();
-
 
   // ===================================================
   // -نقاط
@@ -867,7 +856,6 @@ client.on('messageCreate', async message => {
       embeds: [embed]
     });
   }
-
 
   // ===================================================
   // +نقطه
@@ -933,7 +921,6 @@ client.on('messageCreate', async message => {
     return message.react('✅');
   }
 
-
   // ===================================================
   // -نقطه
   // ===================================================
@@ -998,7 +985,6 @@ client.on('messageCreate', async message => {
     return message.react('✅');
   }
 
-
   // ===================================================
   // التحقق من الرول
   // ===================================================
@@ -1006,7 +992,6 @@ client.on('messageCreate', async message => {
   if (!hasAllowedRole(message.member, settings)) {
     return;
   }
-
 
   // ===================================================
   // -ك / -commands
@@ -1053,7 +1038,6 @@ client.on('messageCreate', async message => {
     });
   }
 
-
   // ===================================================
   // Ping
   // ===================================================
@@ -1074,7 +1058,6 @@ client.on('messageCreate', async message => {
       embeds: [embed]
     });
   }
-
 
   // ===================================================
   // تحديد روم القفل والفتح
@@ -1110,7 +1093,6 @@ client.on('messageCreate', async message => {
       `✅ تم تحديد ${channel} كروم القفل والفتح.`
     );
   }
-
 
   // ===================================================
   // قفل
@@ -1164,7 +1146,6 @@ client.on('messageCreate', async message => {
     }
   }
 
-
   // ===================================================
   // فتح
   // ===================================================
@@ -1217,7 +1198,6 @@ client.on('messageCreate', async message => {
     }
   }
 
-
   // ===================================================
   // تحديد روم الصور
   // ===================================================
@@ -1252,7 +1232,6 @@ client.on('messageCreate', async message => {
       `✅ تم تحديد ${channel} كروم الصور التلقائية.`
     );
   }
-
 
   // ===================================================
   // تحديد الصورة
@@ -1296,7 +1275,6 @@ client.on('messageCreate', async message => {
     );
   }
 
-
   // ===================================================
   // إزالة الصورة
   // ===================================================
@@ -1320,7 +1298,6 @@ client.on('messageCreate', async message => {
       '🗑️ تم حذف الصورة المحددة.'
     );
   }
-
 
   // ===================================================
   // قائمة الصور
@@ -1351,7 +1328,6 @@ client.on('messageCreate', async message => {
     });
   }
 
-
   // ===================================================
   // إرسال الصورة تلقائيًا
   // ===================================================
@@ -1377,7 +1353,6 @@ client.on('messageCreate', async message => {
   }
 
 });
-
 
 // =====================================================
 // تسجيل الدخول
